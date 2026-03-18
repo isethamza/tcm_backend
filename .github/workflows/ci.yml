@@ -54,14 +54,14 @@ jobs:
         run: npm run build
 
       - name: Build Docker image
-        run: docker build -t nest-api .
+        run: docker build -t tcm_backend .
 
       - name: Login to DockerHub
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u ${{ secrets.DOCKER_USER }} --password-stdin
   
 
       - name: Tag image
-        run: docker tag nest-api ${{ secrets.DOCKER_USER }}/nest-api:latest
+        run: docker tag tcm_backend ${{ secrets.DOCKER_USER }}/tcm_backend:latest
 
       - name: Push image
-        run: docker push ${{ secrets.DOCKER_USER }}/nest-api:latest
+        run: docker push ${{ secrets.DOCKER_USER }}/tcm_backend:latest
