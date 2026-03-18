@@ -1,0 +1,20 @@
+<!-- templates/welcome.mjml -->
+<mjml>
+  <mj-body>
+    <mj-section>
+      <mj-column>
+        <mj-text font-size="20px">
+          Hello {{name}},
+        </mj-text>
+
+        <mj-text>
+          Welcome to TCM Logistics 🚀
+        </mj-text>
+
+        <mj-button href="{{ctaUrl}}">
+          Get Started
+        </mj-button>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

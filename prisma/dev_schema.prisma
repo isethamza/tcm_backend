@@ -1,0 +1,593 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String               @id @default(uuid())
+  email                 String               @unique
+  password              String
+  role                  UserRole
+  status                UserStatus           @default(PENDING)
+  phone                 String?
+  firstName             String?
+  lastName              String?
+  lastLoginAt           DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  deletedAt             DateTime?
+  cashAllowed           Boolean              @default(false)
+  companyName           String?
+  companyRegistrationId String?
+  auditLogs             AuditLog[]
+  disputesRaised        Dispute[]
+  emailVerification     EmailVerification?
+  kycs                  Kyc[]
+  verifiedKycs          Kyc[]                @relation("KycVerifier")
+  passwordResetTokens   PasswordResetToken[]
+  profile               Profile?
+  refreshTokens         RefreshToken[]
+  clientBookings        Booking[]            @relation("ClientBookings")
+  managedHubs           Hub[]                @relation("HubManager")
+  payments              Payment[]
+  Recipient             Recipient[]
+  transporteurTrips     Trip[]               @relation("TransporteurTrips")
+  verifications         Verification[]
+
+  @@index([email])
+  @@index([role])
+  @@index([status])
+}
+
+model Profile {
+  id         String   @id @default(uuid())
+  userId     String   @unique
+  mobile     String
+  address    String
+  postalCode String
+  city       String
+  country    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+/// ///////////////////
+/// ///////////////////
+model EmailVerification {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+}
+
+model Recipient {
+  id         String    @id @default(uuid())
+  phone      String
+  address    String
+  country    String
+  city       String
+  clientId   String
+  createdAt  DateTime  @default(now())
+  email      String?
+  firstName  String
+  lastName   String
+  postalCode String?
+  updatedAt  DateTime  @updatedAt
+  bookings   Booking[]
+  client     User      @relation(fields: [clientId], references: [id])
+
+  @@map("recipients")
+}
+
+model Parcel {
+  id               String        @id @default(uuid())
+  bookingId        String        @unique
+  weightKg         Float
+  lengthCm         Float
+  widthCm          Float
+  heightCm         Float
+  estimatedValue   Float?
+  verifiedAt       DateTime?
+  verifiedHeightCm Float?
+  verifiedLengthCm Float?
+  verifiedWeightKg Float?
+  verifiedWidthCm  Float?
+  customsItems     CustomsItem[]
+  booking          Booking       @relation(fields: [bookingId], references: [id])
+}
+
+model Booking {
+  id                String           @id @default(uuid())
+  clientId          String
+  recipientId       String
+  status            BookingStatus
+  pickupStatus      PickupStatus
+  prepaidAmount     Decimal
+  remainingAmount   Decimal
+  createdAt         DateTime         @default(now())
+  deliveryPrice     Float
+  parcelWeightKg    Int
+  pickupFee         Float
+  pickupOption      String
+  totalPrice        Float
+  tripId            String
+  recipientSnapshot Json
+  destinationHubId  String?
+  originHubId       String?
+  updatedAt         DateTime         @default(now())
+  disputes          Dispute[]
+  parcel            Parcel?
+  client            User             @relation("ClientBookings", fields: [clientId], references: [id])
+  destinationHub    Hub?             @relation("DestinationHub", fields: [destinationHubId], references: [id])
+  originHub         Hub?             @relation("OriginHub", fields: [originHubId], references: [id])
+  recipient         Recipient        @relation(fields: [recipientId], references: [id])
+  trip              Trip             @relation(fields: [tripId], references: [id])
+  payments          Payment[]
+  pickupProposals   PickupProposal[]
+  pickupSession     PickupSession?
+  trackingEvents    TrackingEvent[]
+  verifications     Verification[]
+
+  @@index([tripId])
+  @@index([originHubId])
+  @@index([destinationHubId])
+  @@index([status])
+  @@map("bookings")
+}
+
+model CustomsItem {
+  id       String  @id @default(uuid())
+  quantity Int
+  hsCode   String?
+  name     String
+  parcelId String
+  value    Float
+  parcel   Parcel  @relation(fields: [parcelId], references: [id])
+}
+
+model PickupProposal {
+  id           String     @id @default(uuid())
+  bookingId    String
+  startTime    DateTime
+  endTime      DateTime
+  rejected     Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  pickupSlotId String
+  booking      Booking    @relation(fields: [bookingId], references: [id])
+  pickupSlot   PickupSlot @relation(fields: [pickupSlotId], references: [id])
+
+  @@map("pickup_proposals")
+}
+
+model PickupSlot {
+  id             String           @id @default(uuid())
+  transporteurId String
+  date           DateTime
+  startTime      DateTime
+  endTime        DateTime
+  capacity       Int
+  isActive       Boolean          @default(true)
+  notes          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  proposals      PickupProposal[]
+
+  @@index([transporteurId, date])
+  @@map("pickup_slots")
+}
+
+model PickupSession {
+  id            String                 @id @default(uuid())
+  bookingId     String                 @unique
+  startedAt     DateTime               @default(now())
+  completedAt   DateTime?
+  finalWeightKg Float?
+  finalLengthCm Float?
+  finalWidthCm  Float?
+  finalHeightCm Float?
+  cashCollected Float?
+  status        PickupSessionStatus    @default(STARTED)
+  booking       Booking                @relation(fields: [bookingId], references: [id])
+  artifacts     VerificationArtifact[]
+
+  @@map("pickup_sessions")
+}
+
+model VerificationArtifact {
+  id        String                   @id @default(uuid())
+  pickupId  String
+  fileUrl   String
+  createdAt DateTime                 @default(now())
+  type      VerificationArtifactType
+  pickup    PickupSession            @relation(fields: [pickupId], references: [id])
+
+  @@index([pickupId])
+  @@map("verification_artifacts")
+}
+
+model Trip {
+  id                    String            @id @default(uuid())
+  transporteurId        String
+  departureDate         DateTime
+  arrivalCountry        String
+  arrivalDate           DateTime
+  capacityKg            Int
+  createdAt             DateTime          @default(now())
+  departureCountry      String
+  pickupAddonFee        Float?
+  cancelledAt           DateTime?
+  status                TripStatus        @default(DRAFT)
+  arrivalCity           String
+  departureCity         String
+  previousArrivalDate   DateTime?
+  previousDepartureDate DateTime?
+  capacityM3            Int
+  pricingRules          TripPricingRule[]
+  bookings              Booking[]
+  trackingEvents        TrackingEvent[]
+  transporteur          User              @relation("TransporteurTrips", fields: [transporteurId], references: [id])
+
+  @@index([departureCountry, departureCity])
+  @@index([arrivalCountry, arrivalCity])
+  @@map("trips")
+}
+
+/// ///////////////////
+/// ///////////////////
+model TripPricingRule {
+  id     String @id @default(uuid())
+  tripId String
+  minKg  Int
+  maxKg  Int
+  price  Float
+  trip   Trip   @relation(fields: [tripId], references: [id])
+
+  @@unique([tripId, minKg, maxKg])
+}
+
+model TrackingEvent {
+  id        String            @id @default(uuid())
+  bookingId String
+  tripId    String?
+  location  String?
+  createdAt DateTime          @default(now())
+  eventType TrackingEventType @default(PUBLIC)
+  message   String?
+  status    BookingStatus
+  booking   Booking           @relation(fields: [bookingId], references: [id])
+  trip      Trip?             @relation(fields: [tripId], references: [id])
+
+  @@index([bookingId])
+  @@index([eventType])
+  @@map("tracking_events")
+}
+
+model Payment {
+  id             String        @id @default(uuid())
+  bookingId      String
+  amount         Decimal
+  method         PaymentMethod
+  status         PaymentStatus
+  createdAt      DateTime      @default(now())
+  userId         String?
+  stripeIntentId String?       @unique
+  ledgerEntries  LedgerEntry[]
+  booking        Booking       @relation(fields: [bookingId], references: [id])
+  User           User?         @relation(fields: [userId], references: [id])
+
+  @@map("payments")
+}
+
+model LedgerEntry {
+  id             String          @id @default(uuid())
+  paymentId      String
+  type           LedgerEntryType
+  amount         Float
+  transporteurId String?
+  hubId          String?
+  createdAt      DateTime        @default(now())
+  hub            Hub?            @relation(fields: [hubId], references: [id])
+  payment        Payment         @relation(fields: [paymentId], references: [id])
+
+  @@index([paymentId])
+}
+
+model Verification {
+  id         String           @id @default(uuid())
+  bookingId  String
+  verifierId String
+  type       VerificationType
+  success    Boolean
+  createdAt  DateTime         @default(now())
+  booking    Booking          @relation(fields: [bookingId], references: [id])
+  verifier   User             @relation(fields: [verifierId], references: [id])
+
+  @@map("verifications")
+}
+
+model Dispute {
+  id         String        @id @default(uuid())
+  bookingId  String
+  raisedById String
+  type       DisputeType
+  reason     String
+  status     DisputeStatus @default(OPEN)
+  createdAt  DateTime      @default(now())
+  resolvedAt DateTime?
+  booking    Booking       @relation(fields: [bookingId], references: [id])
+  raisedBy   User          @relation(fields: [raisedById], references: [id])
+
+  @@index([status])
+  @@index([bookingId])
+}
+
+model Kyc {
+  id              String    @id @default(uuid())
+  userId          String
+  type            KycType
+  status          KycStatus @default(PENDING)
+  idDocumentUrl   String?
+  selfieUrl       String?
+  licenseUrl      String?
+  parcelPhotoUrl  String?
+  verifierId      String?
+  verifiedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  user            User      @relation(fields: [userId], references: [id])
+  verifier        User?     @relation("KycVerifier", fields: [verifierId], references: [id])
+  Hub             Hub[]
+
+  @@unique([userId, type])
+  @@index([status])
+}
+
+model AuditLog {
+  id        String      @id @default(uuid())
+  actorId   String
+  action    AuditAction
+  entity    String
+  entityId  String
+  metadata  Json?
+  createdAt DateTime    @default(now())
+  actor     User        @relation(fields: [actorId], references: [id])
+
+  @@index([action])
+  @@index([entity])
+  @@index([createdAt])
+}
+
+/// ///////////////////
+/// ///////////////////
+model RefreshToken {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String
+  revokedAt DateTime?
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+}
+
+/// ///////////////////
+/// ///////////////////
+model Hub {
+  id                  String            @id @default(uuid())
+  name                String
+  type                HubType           @default(FIRST_LAST_MILE)
+  status              HubStatus         @default(DRAFT)
+  country             String
+  city                String
+  address             String
+  postalCode          String?
+  maxParcelWeightKg   Float
+  maxParcelVolumeM3   Float
+  occupiedWeightKg    Float             @default(0)
+  occupiedVolumeM3    Float             @default(0)
+  managerId           String
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  kycId               String?
+  ledgerEntries       LedgerEntry[]
+  destinationBookings Booking[]         @relation("DestinationHub")
+  originBookings      Booking[]         @relation("OriginHub")
+  openingHours        HubOpeningHours[]
+  kyc                 Kyc?              @relation(fields: [kycId], references: [id])
+  manager             User              @relation("HubManager", fields: [managerId], references: [id])
+
+  @@index([country, city])
+  @@index([status])
+  @@map("hubs")
+}
+
+/// ///////////////////
+/// ///////////////////
+model HubOpeningHours {
+  id        String   @id @default(uuid())
+  hubId     String
+  day       WeekDay
+  openTime  String
+  closeTime String
+  isClosed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  hub       Hub      @relation(fields: [hubId], references: [id], onDelete: Cascade)
+
+  @@index([hubId, day])
+  @@map("hub_opening_hours")
+}
+
+enum DisputeStatus {
+  OPEN
+  RESOLVED
+  REJECTED
+}
+
+enum DisputeType {
+  DELIVERY
+  PAYMENT
+  KYC
+  OTHER
+}
+
+enum UserRole {
+  CLIENT
+  TRANSPORTEUR
+  HUB_MANAGER
+  ADMIN
+  RECIPIENT
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum BookingStatus {
+  CREATED
+  PREPAID
+  PICKUP_PENDING
+  IN_TRANSIT
+  AT_HUB
+  DELIVERED
+  CANCELLED
+  COMPLETED
+  IN_PICKUP
+  PICKED_UP
+  AWAITING_PICKUP
+  AWAITING_DROPOFF
+  AT_ORIGIN_HUB
+  AT_DESTINATION_HUB
+}
+
+enum PickupStatus {
+  NONE
+  AWAITING_TRANSPORTEUR_PROPOSAL
+  AWAITING_CLIENT_CONFIRMATION
+  CONFIRMED
+}
+
+enum PaymentMethod {
+  ONLINE
+  CASH
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum LedgerEntryType {
+  CLIENT_PAYMENT
+  PLATFORM_COMMISSION
+  VAT
+  TRANSPORTEUR_PAYOUT
+  HUB_PAYOUT
+  REFUND
+}
+
+enum VerificationType {
+  PICKUP
+  DELIVERY
+}
+
+enum KycStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum KycType {
+  CLIENT
+  TRANSPORTEUR
+  HUB_MANAGER
+  RECEIVER
+}
+
+enum AuditAction {
+  KYC_APPROVED
+  KYC_REJECTED
+  DISPUTE_OPENED
+  DISPUTE_RESOLVED
+  CASH_CONFIRMED
+  PAYOUT_TRIGGERED
+  USER_SUSPENDED
+}
+
+enum TripStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  ON_HOLD
+  DELAYED
+  PREPONED
+}
+
+enum PickupSessionStatus {
+  STARTED
+  COMPLETED
+  FAILED
+}
+
+enum VerificationArtifactType {
+  IDENTITY
+  PARCEL
+  SIGNATURE
+}
+
+enum TrackingEventType {
+  PUBLIC
+  INTERNAL
+}
+
+enum HubType {
+  MAIN
+  TRANSIT
+  FIRST_LAST_MILE
+}
+
+enum HubStatus {
+  DRAFT
+  PENDING_KYC
+  ACTIVE
+  REJECTED
+  SUSPENDED
+}
+
+enum PickupOption {
+  STANDARD
+  SCHEDULED
+  SELF_DROPOFF
+  SELF_DROPOFF_AT_HUB
+  SELF_DROPOFF_AT_TRANSPORTEUR
+}
+
+enum WeekDay {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}

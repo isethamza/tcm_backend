@@ -1,0 +1,396 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+//////////////////////////////////////////////////////
+// ENUMS
+//////////////////////////////////////////////////////
+
+enum UserRole {
+  CLIENT
+  TRANSPORTEUR
+  HUB_MANAGER
+  ADMIN
+  RECIPIENT
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum BookingStatus {
+  CREATED
+  PREPAID
+
+  AWAITING_PICKUP
+  IN_PICKUP
+  PICKED_UP
+
+  AT_ORIGIN_HUB
+  IN_TRANSIT
+  AT_DESTINATION_HUB
+
+  READY_FOR_PICKUP
+  OUT_FOR_DELIVERY
+  DELIVERED
+
+  DELIVERY_FAILED
+  RETURNED
+  CANCELLED
+  COMPLETED
+}
+
+enum PickupOption {
+  STANDARD
+  SCHEDULED
+  HUB_DROPOFF
+  POPUP_DROPOFF
+}
+
+enum DeliveryOption {
+  HOME_DELIVERY
+  HUB_PICKUP
+  POPUP_PICKUP
+}
+
+enum HubType {
+  FIRST_LAST_MILE
+  CENTRAL
+}
+
+enum HubStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+}
+
+enum TripStopType {
+  PICKUP
+  DELIVERY
+  BOTH
+}
+
+enum TrackingEventType {
+  PUBLIC
+  INTERNAL
+}
+
+enum LedgerEntryType {
+  CLIENT_PAYMENT
+  TRANSPORTEUR_PAYOUT
+  HUB_COMMISSION
+  PLATFORM_FEE
+}
+
+//////////////////////////////////////////////////////
+// USER
+//////////////////////////////////////////////////////
+
+model User {
+  id        String     @id @default(uuid())
+  email     String     @unique
+  password  String
+  role      UserRole
+  status    UserStatus @default(PENDING)
+
+  firstName String?
+  lastName  String?
+  phone     String?
+
+  companyName           String?
+  companyRegistrationId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  clientBookings Booking[] @relation("ClientBookings")
+  transporteurTrips Trip[] @relation("TransporteurTrips")
+  managedHubs Hub[] @relation("HubManager")
+
+  kycs Kyc[]
+}
+
+//////////////////////////////////////////////////////
+// HUB
+//////////////////////////////////////////////////////
+
+model Hub {
+  id       String    @id @default(uuid())
+  name     String
+  country  String
+  city     String
+  address  String
+  postalCode String?
+
+  type   HubType   @default(FIRST_LAST_MILE)
+  status HubStatus @default(DRAFT)
+
+  maxParcelWeightKg Float
+  maxParcelVolumeM3 Float
+
+  occupiedWeightKg Float @default(0)
+  occupiedVolumeM3 Float @default(0)
+
+  managerId String
+  manager   User   @relation("HubManager", fields: [managerId], references: [id])
+
+  bookingsOrigin      Booking[] @relation("OriginHub")
+  bookingsDestination Booking[] @relation("DestinationHub")
+
+  openingHours HubOpeningHours[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([country, city])
+  @@map("hubs")
+}
+
+model HubOpeningHours {
+  id    String @id @default(uuid())
+  hubId String
+  day   String
+  isOpen Boolean
+  openTime String
+  closeTime String
+
+  hub Hub @relation(fields: [hubId], references: [id])
+}
+
+//////////////////////////////////////////////////////
+// TRIP
+//////////////////////////////////////////////////////
+
+model Trip {
+  id              String   @id @default(uuid())
+  transporteurId String
+  transporteur   User     @relation("TransporteurTrips", fields: [transporteurId], references: [id])
+
+  originCountry      String
+  originCity         String
+  destinationCountry String
+  destinationCity    String
+
+  departureDate DateTime
+  arrivalDate   DateTime
+
+  maxCapacityKg Float
+  maxCapacityM3 Float
+
+  occupiedWeightKg Float @default(0)
+  occupiedVolumeM3 Float @default(0)
+
+  stops TripStop[]
+  bookings Booking[]
+
+  createdAt DateTime @default(now())
+}
+
+//////////////////////////////////////////////////////
+// POPUP (TripStop)
+//////////////////////////////////////////////////////
+
+model TripStop {
+  id        String @id @default(uuid())
+  name      String
+  country   String
+  city      String
+
+  address     String?
+  openDate    DateTime?
+  openTime    String?
+  closeTime   String?
+
+  allowDropoff Boolean @default(true)
+  allowPickup  Boolean @default(true)
+
+  tripId String?
+  trip   Trip? @relation(fields: [tripId], references: [id])
+
+  dropoffBookings  Booking[] @relation("DropoffTripStop")
+  deliveryBookings Booking[] @relation("DeliveryTripStop")
+
+  createdAt DateTime @default(now())
+}
+
+//////////////////////////////////////////////////////
+// BOOKING
+//////////////////////////////////////////////////////
+
+model Booking {
+  id String @id @default(uuid())
+
+  clientId String
+  client   User @relation("ClientBookings", fields: [clientId], references: [id])
+
+  tripId String
+  trip   Trip @relation(fields: [tripId], references: [id])
+
+  recipientSnapshot Json
+
+  pickupOption   PickupOption
+  deliveryOption DeliveryOption
+
+  // PICKUP
+  originHubId String?
+  originHub   Hub? @relation("OriginHub", fields: [originHubId], references: [id])
+
+  dropoffTripStopId String?
+  dropoffTripStop   TripStop? @relation("DropoffTripStop", fields: [dropoffTripStopId], references: [id])
+
+  // DELIVERY
+  destinationHubId String?
+  destinationHub   Hub? @relation("DestinationHub", fields: [destinationHubId], references: [id])
+
+  deliveryTripStopId String?
+  deliveryTripStop   TripStop? @relation("DeliveryTripStop", fields: [deliveryTripStopId], references: [id])
+
+  deliveryAddress Json?
+
+  parcel Parcel?
+
+  prepaidAmount   Decimal @default(0)
+  remainingAmount Decimal @default(0)
+
+  status BookingStatus @default(CREATED)
+
+  trackingEvents TrackingEvent[]
+  deliveryVerifications DeliveryVerification[]
+  deliveryModifications DeliveryModification[]
+
+  createdAt DateTime @default(now())
+}
+
+//////////////////////////////////////////////////////
+// PARCEL
+//////////////////////////////////////////////////////
+
+model Parcel {
+  id        String @id @default(uuid())
+  bookingId String @unique
+
+  weightKg Float
+  lengthCm Float
+  widthCm  Float
+  heightCm Float
+
+  verifiedWeightKg Float?
+  verifiedAt       DateTime?
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+}
+
+//////////////////////////////////////////////////////
+// TRACKING
+//////////////////////////////////////////////////////
+
+model TrackingEvent {
+  id        String @id @default(uuid())
+  bookingId String
+  tripId    String?
+
+  status    BookingStatus
+  eventType TrackingEventType @default(PUBLIC)
+  message   String?
+  location  String?
+
+  createdAt DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+  trip    Trip?   @relation(fields: [tripId], references: [id])
+}
+
+//////////////////////////////////////////////////////
+// DELIVERY VERIFICATION
+//////////////////////////////////////////////////////
+
+model DeliveryVerification {
+  id        String @id @default(uuid())
+  bookingId String
+
+  type      String
+  fileUrl   String?
+  otpCode   String?
+
+  createdAt DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+}
+
+//////////////////////////////////////////////////////
+// DELIVERY MODIFICATION
+//////////////////////////////////////////////////////
+
+model DeliveryModification {
+  id        String @id @default(uuid())
+  bookingId String
+
+  newOption DeliveryOption
+  newHubId  String?
+  newTripStopId String?
+
+  status String
+
+  createdAt DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+}
+
+//////////////////////////////////////////////////////
+// KYC
+//////////////////////////////////////////////////////
+
+model Kyc {
+  id      String @id @default(uuid())
+  userId  String
+  status  String
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+//////////////////////////////////////////////////////
+// PAYMENT
+//////////////////////////////////////////////////////
+
+model Payment {
+  id        String @id @default(uuid())
+  bookingId String
+  amount    Decimal
+  method    String
+  status    String
+  createdAt DateTime @default(now())
+}
+
+//////////////////////////////////////////////////////
+// LEDGER
+//////////////////////////////////////////////////////
+
+model LedgerEntry {
+  id        String @id @default(uuid())
+  paymentId String
+  type      LedgerEntryType
+  amount    Float
+
+  createdAt DateTime @default(now())
+}
+
+//////////////////////////////////////////////////////
+// DISPUTE
+//////////////////////////////////////////////////////
+
+model Dispute {
+  id        String @id @default(uuid())
+  bookingId String
+  reason    String
+  status    String
+
+  createdAt DateTime @default(now())
+}

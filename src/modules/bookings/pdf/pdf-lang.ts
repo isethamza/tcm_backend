@@ -1,0 +1,1 @@
+export type PdfLang = 'en' | 'fr' | 'de' | 'ar';

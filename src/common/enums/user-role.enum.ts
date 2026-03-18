@@ -1,0 +1,6 @@
+export enum UserRole {
+  CLIENT = 'CLIENT',
+  TRANSPORTEUR = 'TRANSPORTEUR',
+  HUB_MANAGER = 'HUB_MANAGER',
+  ADMIN = 'ADMIN'
+}
