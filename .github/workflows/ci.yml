@@ -1,4 +1,4 @@
-name: NestJS CI
+name: tcm_backend CI
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -42,7 +42,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 20
 
       - name: Install dependencies
         run: npm install
@@ -57,7 +57,8 @@ jobs:
         run: docker build -t nest-api .
 
       - name: Login to DockerHub
-        run: docker login -u ${{ secrets.DOCKER_USER }} -p ${{ secrets.DOCKER_PASSWORD }}
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u ${{ secrets.DOCKER_USER }} --password-stdin
+  
 
       - name: Tag image
         run: docker tag nest-api ${{ secrets.DOCKER_USER }}/nest-api:latest
